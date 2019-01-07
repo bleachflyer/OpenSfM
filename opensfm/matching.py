@@ -3,6 +3,8 @@ import cv2
 import pyopengv
 import logging
 
+from matplotlib import pyplot as plt
+
 from opensfm import context
 from opensfm import multiview
 
@@ -18,7 +20,8 @@ def match_lowe(index, f2, config):
         index: flann index if the first image
         f2: feature descriptors of the second image
         config: config parameters
-    """
+    """ 
+    print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@ in match_lowe')
     search_params = dict(checks=config['flann_checks'])
     results, dists = index.knnSearch(f2, 2, params=search_params)
     squared_ratio = config['lowes_ratio']**2  # Flann returns squared L2 distances
@@ -28,6 +31,7 @@ def match_lowe(index, f2, config):
 
 
 def match_symmetric(fi, indexi, fj, indexj, config):
+#def match_symmetric(fi, indexi, fj, indexj, config, pi, pj, imi, imj):
     """Match in both directions and keep consistent matches.
 
     Args:
@@ -36,13 +40,15 @@ def match_symmetric(fi, indexi, fj, indexj, config):
         fj: feature descriptors of the second image
         indexj: flann index of the second image
         config: config parameters
+        pi,pj: SIFT poins loaded
     """
+    print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@ in match_symmetric')
     if config['matcher_type'] == 'FLANN':
         matches_ij = [(a, b) for a, b in match_lowe(indexi, fj, config)]
         matches_ji = [(b, a) for a, b in match_lowe(indexj, fi, config)]
     else:
-        matches_ij = [(a, b) for a, b in match_lowe_bf(fi, fj, config)]
-        matches_ji = [(b, a) for a, b in match_lowe_bf(fj, fi, config)]
+        matches_ij = [(a, b) for a, b in match_lowe_bf(fi, fj, config)]#, pi, pj, imi, imj)]
+        matches_ji = [(b, a) for a, b in match_lowe_bf(fj, fi, config)]#, pj, pi, imj, imi)]
 
     matches = set(matches_ij).intersection(set(matches_ji))
     return np.array(list(matches), dtype=int)
@@ -58,8 +64,8 @@ def _convert_matches_to_vector(matches):
         k = k+1
     return matches_vector
 
-
 def match_lowe_bf(f1, f2, config):
+#def match_lowe_bf(f1, f2, config, p1, p2, im1, im2):
     """Bruteforce matching and Lowe's ratio filtering.
 
     Args:
@@ -67,6 +73,8 @@ def match_lowe_bf(f1, f2, config):
         f2: feature descriptors of the second image
         config: config parameters
     """
+    
+    print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@ in match_lowe_bf')
     assert(f1.dtype.type == f2.dtype.type)
     if (f1.dtype.type == np.uint8):
         matcher_type = 'BruteForce-Hamming'
@@ -74,7 +82,13 @@ def match_lowe_bf(f1, f2, config):
         matcher_type = 'BruteForce'
     matcher = cv2.DescriptorMatcher_create(matcher_type)
     matches = matcher.knnMatch(f1, f2, k=2)
-
+    # Possible adding points qli
+    """
+    img3=None
+    #draw_params=dict(matchesMask=matchesMask)
+    img3 = cv2.drawMatchesKnn(im1,p1,im2,p2,matches,None,flags=2)
+    plt.imshow(img3,cmap='gray') 
+    """
     ratio = config['lowes_ratio']
     good_matches = []
     for match in matches:
@@ -88,6 +102,7 @@ def match_lowe_bf(f1, f2, config):
 
 def robust_match_fundamental(p1, p2, matches, config):
     """Filter matches by estimating the Fundamental matrix via RANSAC."""
+    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!! in match_fundamental')
     if len(matches) < 8:
         return None, np.array([])
 
@@ -123,7 +138,7 @@ def _compute_inliers_bearings(b1, b2, T, threshold=0.01):
 
 def robust_match_calibrated(p1, p2, camera1, camera2, matches, config):
     """Filter matches by estimating the Essential matrix via RANSAC."""
-
+    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!! in robust_match_calibrated')
     if len(matches) < 8:
         return np.array([])
 
@@ -154,6 +169,7 @@ def robust_match(p1, p2, camera1, camera2, matches, config):
     If cameras are perspective without distortion, then the Fundamental
     matrix is used.  Otherwise, we use the Essential matrix.
     """
+    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!! in robust_match')
     if (camera1.projection_type == 'perspective'
             and camera1.k1 == 0.0 and camera1.k2 == 0.0
             and camera2.projection_type == 'perspective'

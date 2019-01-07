@@ -4,9 +4,11 @@ import time
 import logging
 import numpy as np
 import cv2
+from matplotlib import pyplot as plt
 
 from opensfm import context
 from opensfm import csfm
+
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +94,7 @@ def _in_mask(point, width, height, mask):
 def extract_features_sift(image, config):
     sift_edge_threshold = config['sift_edge_threshold']
     sift_peak_threshold = float(config['sift_peak_threshold'])
+    i = 0
     if context.OPENCV3:
         try:
             detector = cv2.xfeatures2d.SIFT_create(
@@ -117,6 +120,16 @@ def extract_features_sift(image, config):
             detector.setDouble("contrastThreshold", sift_peak_threshold)
         points = detector.detect(image)
         logger.debug('Found {0} points in {1}s'.format(len(points), time.time() - t))
+        # write sift feature points
+        if False:
+           imgOut = np.empty((image.shape[0], image.shape[1], 3), dtype=np.uint8)
+           cv2.drawKeypoints(image, points, imgOut)
+           #cv2.imshow(str(i),imgOut)
+           cv2.imwrite('/home/qli/workspace/OpenSfM/data/MattTest/sift_keypoints_'+str(i)+'.jpg',imgOut)
+           fig=plt.figure('keypoints'+str(i))
+           plt.imshow(imgOut)
+           plt.show()
+        i = i+1
         if len(points) < config['feature_min_frames'] and sift_peak_threshold > 0.0001:
             sift_peak_threshold = (sift_peak_threshold * 2) / 3
             logger.debug('reducing threshold')
@@ -124,6 +137,7 @@ def extract_features_sift(image, config):
             logger.debug('done')
             break
     points, desc = descriptor.compute(image, points)
+    print( cv2. __version__)
     if config['feature_root']:
         desc = root_feature(desc)
     points = np.array([(i.pt[0], i.pt[1], i.size, i.angle) for i in points])

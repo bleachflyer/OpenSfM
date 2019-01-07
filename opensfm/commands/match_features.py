@@ -1,6 +1,8 @@
 import logging
+import cv2
 from itertools import combinations
 from timeit import default_timer as timer
+from matplotlib import pyplot as plt
 
 import numpy as np
 import scipy.spatial as spatial
@@ -97,6 +99,7 @@ def match_candidates_by_distance(images, exifs, reference, max_neighbors, max_di
     at different altitudes to be matched together.  Otherwise, for drone
     datasets, flights at different altitudes do not get matched.
     """
+    print('1111111111111111111111 in mathcing by distance')
     if max_neighbors <= 0 and max_distance <= 0:
         return set()
     max_neighbors = max_neighbors or 99999999
@@ -118,11 +121,13 @@ def match_candidates_by_distance(images, exifs, reference, max_neighbors, max_di
         for j in neighbors:
             if i != j and j < len(images):
                 pairs.add(tuple(sorted((images[i], images[j]))))
+    
     return pairs
 
 
 def match_candidates_by_time(images, exifs, max_neighbors):
     """Find candidate matching pairs by time difference."""
+    print('222222222222222222222222 in matching by time')
     if max_neighbors <= 0:
         return set()
     k = min(len(images), max_neighbors + 1)
@@ -139,11 +144,13 @@ def match_candidates_by_time(images, exifs, max_neighbors):
         for j in neighbors:
             if i != j and j < len(images):
                 pairs.add(tuple(sorted((images[i], images[j]))))
+    
     return pairs
 
 
 def match_candidates_by_order(images, max_neighbors):
     """Find candidate matching pairs by sequence order."""
+    print('3333333333333333333333333 in matching by order')
     if max_neighbors <= 0:
         return set()
     n = (max_neighbors + 1) // 2
@@ -154,12 +161,13 @@ def match_candidates_by_order(images, max_neighbors):
         b = min(len(images), i + n)
         for j in range(a, b):
             if i != j:
-                pairs.add(tuple(sorted((images[i], images[j]))))
+                pairs.add(tuple(sorted((images[i], images[j]))))    
     return pairs
 
 
 def match_candidates_from_metadata(images, exifs, data):
     """Compute candidate matching pairs"""
+    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!! in matching by metadata')
     max_distance = data.config['matching_gps_distance']
     gps_neighbors = data.config['matching_gps_neighbors']
     time_neighbors = data.config['matching_time_neighbors']
@@ -213,8 +221,11 @@ def match(args):
     log.setup()
 
     im1, candidates, i, n, ctx = args
+    #cv2.imshow('123',im1)
+    print("....................1%s"%im1)
+    print("....................2%s"%candidates)
     logger.info('Matching {}  -  {} / {}'.format(im1, i + 1, n))
-
+    
     config = ctx.data.config
     robust_matching_min_match = config['robust_matching_min_match']
     preemptive_threshold = config['preemptive_threshold']
@@ -245,13 +256,52 @@ def match(args):
         p2, f2, c2 = ctx.data.load_features(im2)
 
         if config['matcher_type'] == 'FLANN':
+            print('.....................using FLANN step 1')
             i1 = ctx.data.load_feature_index(im1, f1)
             i2 = ctx.data.load_feature_index(im2, f2)
         else:
             i1 = None
             i2 = None
 
-        matches = matching.match_symmetric(f1, i1, f2, i2, config)
+        matches = matching.match_symmetric(f1, i1, f2, i2, config)#, p1, p2, im1, im2)#add keypoints and images qli
+        # Apply ratio test
+        """
+        matchesMask = [[0,0] for ii in range(len(matches))]
+        for ii,(m,n) in enumerate(matches):
+           if 0.55*n.distance<m.distance < 0.80*n.distance:
+              matchesMask[ii]=[1,0]
+        
+        draw_params=dict(matchesMask=matchesMask)
+        """
+        siftQ = cv2.xfeatures2d.SIFT_create()
+        print('loading image 1 ..................%s'%im1)
+        print('loading image 2 ..................%s'%im2)
+        img1 = cv2.imread('/home/qli/workspace/OpenSfM/data/MattGPS/images/%s'%im1)
+        img2 = cv2.imread('/home/qli/workspace/OpenSfM/data/MattGPS/images/%s'%im2)
+        
+        kp1, des1 = siftQ.detectAndCompute(img1,None)
+        kp2, des2 = siftQ.detectAndCompute(img2,None)
+        # BFMatcher with default params
+        bf = cv2.BFMatcher()
+        matchesQ = bf.knnMatch(des1,des2, k=2)
+        matchesMask = [[0,0] for i in range(len(matchesQ))]
+        for i,(m,n) in enumerate(matchesQ):
+            if 0.55*n.distance<m.distance < 0.80*n.distance:
+               matchesMask[i]=[1,0]
+            # cv2.drawMatchesKnn expects list of lists as matches.        
+        draw_params=dict(matchesMask=matchesMask)
+        img3=None
+        img3 = cv2.drawMatchesKnn(img1,kp1,img2,kp2,matchesQ,None,flags=2,**draw_params)
+        #namestr= '/home/qli/workspace/OpenSfM/data/MattGPS/images/'+str(im1)+str(im2)        
+        #cv2.imwrite(namestr,img3) 
+        #plt.figure(str(im1)+str(im2))
+        #plt.imshow(img3)
+        savefigname= "/home/qli/workspace/OpenSfM/data/MattGPS/GPS%s%s.jpg"%(str(im1),str(im2))
+        #plt.savefig(savefigname)       
+        cv2.imwrite(savefigname,img3)
+        #plt.show()
+        #plt.close()
+        #return
         logger.debug('{} - {} has {} candidate matches'.format(
             im1, im2, len(matches)))
         if len(matches) < robust_matching_min_match:
